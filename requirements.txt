@@ -1,0 +1,4 @@
+gymnasium[box2d]==1.2.0
+gymnasium[other]==1.2.0
+gymnasium[array-api]==1.2.0
+numpy==2.2.6
