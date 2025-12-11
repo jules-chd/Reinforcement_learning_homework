@@ -15,7 +15,7 @@ from typing import Tuple
 
 
 # Specify your team name in a global variable like so:
-TEAM_NAME = "Your Team Name Here"
+TEAM_NAME = "COCHARD_GIRARDOT"
 
 
 
