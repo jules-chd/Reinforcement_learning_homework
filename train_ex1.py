@@ -67,7 +67,7 @@ class ReplayBuffer:
 
 
 
-def train_model(env, model, optimizer, gamma=0.99, episodes=1000, epsilon_start=1.0, epsilon_end=0.01, epsilon_decay=0.9995, batch_size=64, target_update_frequency=5, learning_rate=0.0005):
+def train_model(env, model, optimizer, gamma=0.99, episodes=1000, epsilon_start=1.0, epsilon_end=0.05, epsilon_decay=0.9985, batch_size=64, target_update_frequency=5, learning_rate=0.0005):
     """
     Train the model using DQN algorithm
     """
@@ -129,9 +129,12 @@ def train_model(env, model, optimizer, gamma=0.99, episodes=1000, epsilon_start=
                 # Current Q-values
                 q_values = model(states).gather(1, actions.unsqueeze(1)).squeeze(1)
 
-                # Target Q-values using target network
+                # Double DQN: use main network to select action, target network to evaluate
                 with torch.no_grad():
-                    next_q_values = target_model(next_states).max(1)[0]
+                    # Select best action using main network (reduces overestimation)
+                    next_actions = model(next_states).argmax(1)
+                    # Evaluate using target network
+                    next_q_values = target_model(next_states).gather(1, next_actions.unsqueeze(1)).squeeze(1)
                     target_q_values = rewards + gamma * next_q_values * (1 - dones)
 
                 # Compute loss and update model
@@ -139,6 +142,7 @@ def train_model(env, model, optimizer, gamma=0.99, episodes=1000, epsilon_start=
 
                 optimizer.zero_grad()
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)  # Gradient clipping for stability
                 optimizer.step()
 
             state = next_state
