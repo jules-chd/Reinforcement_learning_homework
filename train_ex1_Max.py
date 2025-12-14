@@ -67,7 +67,7 @@ class ReplayBuffer:
 
 
 
-def train_model(env, model, optimizer, gamma=0.99, episodes=1000, epsilon_start=1.0, epsilon_end=0.05, epsilon_decay=0.9985, batch_size=64, target_update_frequency=5, learning_rate=0.0005):
+def train_model(env, model, optimizer, gamma=0.99, episodes=1000, epsilon_start=1.0, epsilon_end=0.01, epsilon_decay=0.9995, batch_size=64, target_update_frequency=5, learning_rate=0.0005):
     """
     Train the model using DQN algorithm
     """
@@ -129,12 +129,9 @@ def train_model(env, model, optimizer, gamma=0.99, episodes=1000, epsilon_start=
                 # Current Q-values
                 q_values = model(states).gather(1, actions.unsqueeze(1)).squeeze(1)
 
-                # Double DQN: use main network to select action, target network to evaluate
+                # Target Q-values using target network
                 with torch.no_grad():
-                    # Select best action using main network (reduces overestimation)
-                    next_actions = model(next_states).argmax(1)
-                    # Evaluate using target network
-                    next_q_values = target_model(next_states).gather(1, next_actions.unsqueeze(1)).squeeze(1)
+                    next_q_values = target_model(next_states).max(1)[0]
                     target_q_values = rewards + gamma * next_q_values * (1 - dones)
 
                 # Compute loss and update model
@@ -142,7 +139,6 @@ def train_model(env, model, optimizer, gamma=0.99, episodes=1000, epsilon_start=
 
                 optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)  # Gradient clipping for stability
                 optimizer.step()
 
             state = next_state
@@ -153,28 +149,30 @@ def train_model(env, model, optimizer, gamma=0.99, episodes=1000, epsilon_start=
         # Update target network
         if (ep + 1) % target_update_frequency == 0:
             target_model.load_state_dict(model.state_dict())
-            
+
         print(f"Episode {ep + 1}/{episodes}, Epsilon: {epsilon:.3f}, Episode Reward: {episode_reward:.2f}")
 
-        if episode_reward>200:
+        if episode_reward>150:
             model.save(f"weights_ep{ep+1}_{episode_reward}.pth")
 
-        # # Print progress with reward info
-        # if (ep + 1) % 10 == 0:
-        #     print(f"Episode {ep + 1}/{episodes}, Epsilon: {epsilon:.3f}, Episode Reward: {episode_reward:.2f}")
+        '''
+        # Print progress with reward info
+        if (ep + 1) % 10 == 0:
+            print(f"Episode {ep + 1}/{episodes}, Epsilon: {epsilon:.3f}, Episode Reward: {episode_reward:.2f}")
         
-        # if (ep + 1) % 30 == 0:
-        #     gui_env = gym.make('LunarLander-v3', render_mode="human")
-        #     gui_env = ArrayConversion(env=gui_env, env_xp=np, target_xp=torch)
-        #     state, _ = gui_env.reset()
-        #     state = state.to(device)
-        #     done = False
-        #     while not done:
-        #         with torch.no_grad():
-        #             action = model.act(state.unsqueeze(0)).item()
-        #         state, reward, terminated, truncated, info = gui_env.step(action)
-        #         state = state.to(device)
-        #         done = terminated or truncated
+        if (ep + 1) % 30 == 0:
+            gui_env = gym.make('LunarLander-v3', render_mode="human")
+            gui_env = ArrayConversion(env=gui_env, env_xp=np, target_xp=torch)
+            state, _ = gui_env.reset()
+            state = state.to(device)
+            done = False
+            while not done:
+                with torch.no_grad():
+                    action = model.act(state.unsqueeze(0)).item()
+                state, reward, terminated, truncated, info = gui_env.step(action)
+                state = state.to(device)
+                done = terminated or truncated
+        '''
 
 
 
