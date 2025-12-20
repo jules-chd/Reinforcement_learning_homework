@@ -71,19 +71,14 @@ def train_model(env, model, optimizer, gamma=0.99, episodes=1000, epsilon_start=
     """
     Train the model using DQN algorithm
     """
-    # Set max episode steps to 1000
     env = TimeLimit(env=env, max_episode_steps=1000)
-    # Convert environment to produce torch tensors
     env = ArrayConversion(env=env, env_xp=np, target_xp=torch)
-    # Wrap environment to record episode stats for last 10 episodes
     env = RecordEpisodeStatistics(env=env, stats_key='episode', buffer_length=10)
 
-    # Create target network
     target_model = DQNNetExample(env.observation_space.shape[0], env.action_space.n)
     target_model.load_state_dict(model.state_dict())
     target_model.eval()
 
-    # Create replay buffer
     replay_buffer = ReplayBuffer(capacity=100000)
 
     epsilon = epsilon_start
@@ -98,26 +93,21 @@ def train_model(env, model, optimizer, gamma=0.99, episodes=1000, epsilon_start=
         episode_reward = 0
 
         while not done:
-            # Epsilon-greedy action selection
             if random.random() < epsilon:
                 action = env.action_space.sample()
             else:
                 with torch.no_grad():
                     q_values = model(state.unsqueeze(0))
                     action = torch.argmax(q_values, dim=-1).item()
-                    # Print Q-values for all actions (uncomment for debugging)
-                    # print(f"Q-values: {q_values[0].cpu().numpy()}, Selected action: {action}")
 
-            # Take action in environment
+
             next_state, reward, terminated, truncated, _ = env.step(action)
             next_state = next_state.to(device)
             done = terminated or truncated
             episode_reward += reward
 
-            # Store transition in replay buffer
             replay_buffer.push(state, action, reward, next_state, done)
 
-            # Train on batch from replay buffer
             if len(replay_buffer) >= batch_size:
                 states, actions, rewards, next_states, dones = replay_buffer.sample(batch_size)
                 states = states.to(device)
@@ -126,31 +116,24 @@ def train_model(env, model, optimizer, gamma=0.99, episodes=1000, epsilon_start=
                 next_states = next_states.to(device)
                 dones = dones.to(device)
 
-                # Current Q-values
                 q_values = model(states).gather(1, actions.unsqueeze(1)).squeeze(1)
 
-                # Double DQN: use main network to select action, target network to evaluate
                 with torch.no_grad():
-                    # Select best action using main network (reduces overestimation)
                     next_actions = model(next_states).argmax(1)
-                    # Evaluate using target network
                     next_q_values = target_model(next_states).gather(1, next_actions.unsqueeze(1)).squeeze(1)
                     target_q_values = rewards + gamma * next_q_values * (1 - dones)
 
-                # Compute loss and update model
                 loss = F.mse_loss(q_values, target_q_values)
 
                 optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)  # Gradient clipping for stability
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) 
                 optimizer.step()
 
             state = next_state
 
-        # Decay epsilon
         epsilon = max(epsilon_end, epsilon * epsilon_decay)
 
-        # Update target network
         if (ep + 1) % target_update_frequency == 0:
             target_model.load_state_dict(model.state_dict())
             
@@ -159,39 +142,17 @@ def train_model(env, model, optimizer, gamma=0.99, episodes=1000, epsilon_start=
         if episode_reward>200:
             model.save(f"weights_ep{ep+1}_{episode_reward}.pth")
 
-        # # Print progress with reward info
-        # if (ep + 1) % 10 == 0:
-        #     print(f"Episode {ep + 1}/{episodes}, Epsilon: {epsilon:.3f}, Episode Reward: {episode_reward:.2f}")
-        
-        # if (ep + 1) % 30 == 0:
-        #     gui_env = gym.make('LunarLander-v3', render_mode="human")
-        #     gui_env = ArrayConversion(env=gui_env, env_xp=np, target_xp=torch)
-        #     state, _ = gui_env.reset()
-        #     state = state.to(device)
-        #     done = False
-        #     while not done:
-        #         with torch.no_grad():
-        #             action = model.act(state.unsqueeze(0)).item()
-        #         state, reward, terminated, truncated, info = gui_env.step(action)
-        #         state = state.to(device)
-        #         done = terminated or truncated
-
 
 
 if __name__ == "__main__":
-    # Initialize LunarLander environment
     env = gym.make('LunarLander-v3')
 
-    # Initialize model and optimizer
     model = DQNNetExample(env.observation_space.shape[0], env.action_space.n)
-    # Train the model using DQN
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
     train_model(env, model, optimizer)
 
-    # Save the trained agent for evaluation
     model.save("weights.pth")
 
-    # Visualize the trained policy
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     model.eval()

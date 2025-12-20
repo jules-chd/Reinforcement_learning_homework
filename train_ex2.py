@@ -6,22 +6,19 @@ import numpy as np
 from collections import deque
 from temp.ex2.interface import ActorCritic
 
-# --- Hyperparameters ---
+# parameters
 ENV_NAME = "LunarLander-v3"
-LEARNING_RATE = 3e-4     # Slightly higher start, but decays
+LEARNING_RATE = 3e-4 
 GAMMA = 0.99
 GAE_LAMBDA = 0.95
 CLIP_EPS = 0.2
 ENTROPY_COEF = 0.01
 VALUE_LOSS_COEF = 0.5
 MAX_GRAD_NORM = 0.5
-TOTAL_TIMESTEPS = 600000 # Enough to converge fully
+TOTAL_TIMESTEPS = 600000
 UPDATE_TIMESTEPS = 2048
-K_EPOCHS = 10            # Increased epochs to squeeze more out of data
+K_EPOCHS = 10 
 BATCH_SIZE = 64
-
-# Logging threshold
-SAVE_THRESHOLD = 200     # Save any episode above 200
 
 def compute_gae(rewards, values, masks, next_value, gamma, lam):
     returns = []
@@ -36,7 +33,6 @@ def compute_gae(rewards, values, masks, next_value, gamma, lam):
 def train():
     env = gym.make(ENV_NAME)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Training on {device}...")
 
     agent = ActorCritic().to(device)
     optimizer = optim.Adam(agent.parameters(), lr=LEARNING_RATE, eps=1e-5)
@@ -47,16 +43,16 @@ def train():
     ep_reward = 0
     ep_rewards_history = deque(maxlen=20)
     best_mean_reward = -float('inf')
-    highest_ep_score = 230
+    highest_ep_score = -100 # just to save model that beats this score   
     num_updates = TOTAL_TIMESTEPS // UPDATE_TIMESTEPS
 
     for update in range(1, num_updates + 1):
-        # --- LEARNING RATE DECAY ---
+        # Learning Rate Decay
         frac = 1.0 - (update - 1.0) / num_updates
         lrnow = frac * LEARNING_RATE
         optimizer.param_groups[0]["lr"] = lrnow
 
-        # --- 1. Data Collection ---
+        # Data Collection
         states_list, actions_list, log_probs_list = [], [], []
         rewards_list, dones_list, values_list = [], [], []
         
@@ -85,18 +81,17 @@ def train():
             if done:
                 ep_rewards_history.append(ep_reward)
                 
-                # Save High Score Snapshots
+                # Save the best models so far (if better than highest_ep_score)
                 if ep_reward > highest_ep_score:
                     highest_ep_score = ep_reward
                     clean_score = int(ep_reward)
                     
-                    print(f"!!! Great Episode: {clean_score}. Saving snapshot...")
+                    print(f"Best score : {clean_score}. Saving weights_{clean_score}.pth")
                     torch.save(agent.state_dict(), f"weights_{clean_score}.pth")
 
                 ep_reward = 0
                 state, _ = env.reset()
 
-        # --- 2. Logging ---
         if len(ep_rewards_history) > 0:
             avg_rew = np.mean(ep_rewards_history)
             if update % 5 == 0:
@@ -107,7 +102,7 @@ def train():
                 print(f"--> New Best Avg: {best_mean_reward:.2f}. Saving weights.pth")
                 torch.save(agent.state_dict(), "weights.pth")
 
-        # --- 3. GAE & Advantage ---
+        # GAE and advantage
         with torch.no_grad():
             next_state_tensor = torch.FloatTensor(state).to(device)
             _, next_value = agent(next_state_tensor)
@@ -123,7 +118,7 @@ def train():
         b_advantages = b_returns - b_values
         b_advantages = (b_advantages - b_advantages.mean()) / (b_advantages.std() + 1e-8)
 
-        # --- 4. PPO Update ---
+        # PPO Update
         b_inds = np.arange(UPDATE_TIMESTEPS)
         for epoch in range(K_EPOCHS):
             np.random.shuffle(b_inds)
